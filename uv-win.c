@@ -2112,6 +2112,7 @@ static void uv_getaddrinfo_done(uv_getaddrinfo_t* handle, uv_req_t* req) {
   struct addrinfo* addrinfo_ptr;
   char* alloc_ptr = NULL;
   char* cur_ptr = NULL;
+  uv_err_code uv_ret;
 
   /* release input parameter memory */
   if (handle->alloc != NULL) {
@@ -2119,7 +2120,7 @@ static void uv_getaddrinfo_done(uv_getaddrinfo_t* handle, uv_req_t* req) {
     handle->alloc = NULL;
   }
 
-  uv_err_code uv_ret = uv_translate_eai_error(handle->retcode);
+  uv_ret = uv_translate_eai_error(handle->retcode);
   if (handle->retcode == 0) {
     /* convert addrinfoW to addrinfo */
     /* first calculate required length */

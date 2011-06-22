@@ -62,7 +62,6 @@ BENCHMARK_IMPL(getaddrinfo) {
 
   int rc = 0;
   char* name = "localhost";
-  struct addrinfo *addrinfo_ptr;
   int i;
 
   uv_init();
