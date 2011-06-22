@@ -1587,6 +1587,7 @@ static void uv_process_reqs() {
 
       case UV_ARES_TASK:
         uv_ares_task_cleanup((uv_ares_task_t*)handle, req);
+        break;
 
       case UV_GETADDRINFO:
         uv_getaddrinfo_done((uv_getaddrinfo_t*)handle, req);
