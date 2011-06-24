@@ -81,7 +81,7 @@ class Channel : public ObjectWrap {
 
   ares_channel channel;
 
-  static void SockStateCb(void *data, ares_socket_t sock, int read, int write);
+  // static void SockStateCb(void *data, ares_socket_t sock, int read, int write);
   static void QueryCb(void *arg, int status, int timeouts, unsigned char* abuf, int alen);
 };
 
@@ -545,18 +545,18 @@ Handle<Value> Channel::New(const Arguments& args) {
             String::New("Bad Options Argument")));
     }
 
-    Local<Object> options_o = Local<Object>::Cast(args[0]);
+    //Local<Object> options_o = Local<Object>::Cast(args[0]);
 
-    Local<Value> cb = options_o->Get(String::NewSymbol("SOCK_STATE_CB"));
-    if (!cb.IsEmpty()) {
-      c->handle_->Set(callback_symbol, cb);
-      options.sock_state_cb_data = c;
-      options.sock_state_cb = Channel::SockStateCb;
-      optmask |= ARES_OPT_SOCK_STATE_CB;
-    }
+    //Local<Value> cb = options_o->Get(String::NewSymbol("SOCK_STATE_CB"));
+    //if (!cb.IsEmpty()) {
+    //  c->handle_->Set(callback_symbol, cb);
+    //  options.sock_state_cb_data = c;
+    //  options.sock_state_cb = Channel::SockStateCb;
+    //  optmask |= ARES_OPT_SOCK_STATE_CB;
+    //}
   }
 
-  ares_init_options(&c->channel, &options, optmask);
+  uv_ares_init_options(&c->channel, &options, optmask);
 
   return args.This();
 }
@@ -783,29 +783,29 @@ Handle<Value> Channel::ProcessFD(const Arguments& args) {
 }
 
 
-void Channel::SockStateCb(void *data, ares_socket_t sock, int read, int write) {
-  Channel *c = static_cast<Channel*>(data);
-  HandleScope scope;
-
-  Local<Value> callback_v = c->handle_->Get(callback_symbol);
-  if (!callback_v->IsFunction()) return;
-  Local<Function> callback = Local<Function>::Cast(callback_v);
-
-  Local<Value> argv[3];
-
-  argv[0] = Integer::New(sock);
-  argv[1] = Integer::New(read);
-  argv[2] = Integer::New(write);
-
-  TryCatch try_catch;
-
-  callback->Call(c->handle_, 3, argv);
-
-  if (try_catch.HasCaught()) {
-    FatalException(try_catch);
-  }
-}
-
+//void Channel::SockStateCb(void *data, ares_socket_t sock, int read, int write) {
+//  Channel *c = static_cast<Channel*>(data);
+//  HandleScope scope;
+//
+//  Local<Value> callback_v = c->handle_->Get(callback_symbol);
+//  if (!callback_v->IsFunction()) return;
+//  Local<Function> callback = Local<Function>::Cast(callback_v);
+//
+//  Local<Value> argv[3];
+//
+//  argv[0] = Integer::New(sock);
+//  argv[1] = Integer::New(read);
+//  argv[2] = Integer::New(write);
+//
+//  TryCatch try_catch;
+//
+//  callback->Call(c->handle_, 3, argv);
+//
+//  if (try_catch.HasCaught()) {
+//    FatalException(try_catch);
+//  }
+//}
+//
 
 
 
