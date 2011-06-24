@@ -22,6 +22,10 @@
 #ifndef SRC_NODE_H_
 #define SRC_NODE_H_
 
+#ifndef _WIN32_WINNT
+# define _WIN32_WINNT   0x0501
+#endif
+
 #include <uv.h>
 #include <eio.h>
 #include <v8.h>
