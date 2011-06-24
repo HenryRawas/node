@@ -493,7 +493,7 @@ static inline void tty_emit_error(Handle<Value> err) {
 }
 
 
-static void tty_poll(uv_handle_t* handle, int status) {
+static void tty_poll(uv_async_t* handle, int status) {
   assert((uv_async_t*) handle == &tty_avail_notifier);
   assert(status == 0);
 

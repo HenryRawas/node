@@ -828,6 +828,8 @@ def build(bld):
   """
 
   if sys.platform.startswith("win32"):
+    node.source += " src/node_cares.cc "
+    node.source += " src/node_net.cc "
     node.source += " src/node_stdio_win32.cc "
     node.source += " src/node_child_process_win32.cc "
   else:

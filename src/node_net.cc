@@ -1606,7 +1606,7 @@ struct resolve_request {
 #endif
 
 static int AfterResolve(eio_req *req) {
-  ev_unref(EV_DEFAULT_UC);
+//  ev_unref(EV_DEFAULT_UC);
 
   struct resolve_request * rreq = (struct resolve_request *)(req->data);
 
@@ -1741,7 +1741,7 @@ static Handle<Value> GetAddrInfo(const Arguments& args) {
   // loop while getaddrinfo() runs. If the only thing happening in the
   // script was this hostname resolution, then the event loop would drop
   // out. Thus we need to add ev_ref() until AfterResolve().
-  ev_ref(EV_DEFAULT_UC);
+//  ev_ref(EV_DEFAULT_UC);
 
   return Undefined();
 }

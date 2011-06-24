@@ -22,18 +22,18 @@
 
 NODE_EXT_LIST_START
 NODE_EXT_LIST_ITEM(node_buffer)
-#ifdef __POSIX__
+// #ifdef __POSIX__
 NODE_EXT_LIST_ITEM(node_cares)
-#endif
+// #endif
 NODE_EXT_LIST_ITEM(node_child_process)
 #ifdef HAVE_OPENSSL
 NODE_EXT_LIST_ITEM(node_crypto)
 #endif
 NODE_EXT_LIST_ITEM(node_evals)
 NODE_EXT_LIST_ITEM(node_fs)
-#ifdef __POSIX__
+//#ifdef __POSIX__
 NODE_EXT_LIST_ITEM(node_net)
-#endif
+//#endif
 NODE_EXT_LIST_ITEM(node_http_parser)
 #ifdef __POSIX__
 NODE_EXT_LIST_ITEM(node_signal_watcher)
