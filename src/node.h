@@ -22,6 +22,9 @@
 #ifndef SRC_NODE_H_
 #define SRC_NODE_H_
 
+// A dependency include (libeio\xthread.h) defines _WIN32_WINNT to another value
+// This should be defined in make system.
+// See issue https://github.com/joyent/node/issues/1236
 #ifdef __MINGW32__
 #ifndef _WIN32_WINNT
 # define _WIN32_WINNT   0x0501
