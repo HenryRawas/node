@@ -188,31 +188,33 @@ class TCPWrap {
 
     TCPWrap* wrap = static_cast<TCPWrap*>(handle->data);
 
-    assert(&wrap->handle_ == (uv_tcp_t*)handle);
+    if (!wrap->object_.IsEmpty()) {
+      assert(&wrap->handle_ == (uv_tcp_t*)handle);
 
-    if (status != 0) {
-      // TODO Handle server error (call onerror?)
-      assert(0);
-      uv_close((uv_handle_t*) handle, OnClose);
-      return;
+      if (status != 0) {
+        // TODO Handle server error (call onerror?)
+        assert(0);
+        uv_close((uv_handle_t*) handle, OnClose);
+        return;
+      }
+
+      // Instanciate the client javascript object and handle.
+      Local<Object> client_obj = constructor->NewInstance();
+
+      // Unwrap the client javascript object.
+      assert(client_obj->InternalFieldCount() > 0);
+      TCPWrap* client_wrap =
+          static_cast<TCPWrap*>(client_obj->GetPointerFromInternalField(0));
+
+      int r = uv_accept(handle, (uv_stream_t*)&client_wrap->handle_);
+
+      // uv_accept should always work.
+      assert(r == 0);
+
+      // Successful accept. Call the onconnection callback in JavaScript land.
+      Local<Value> argv[1] = { client_obj };
+      MakeCallback(wrap->object_, "onconnection", 1, argv);
     }
-
-    // Instanciate the client javascript object and handle.
-    Local<Object> client_obj = constructor->NewInstance();
-
-    // Unwrap the client javascript object.
-    assert(client_obj->InternalFieldCount() > 0);
-    TCPWrap* client_wrap =
-        static_cast<TCPWrap*>(client_obj->GetPointerFromInternalField(0));
-
-    int r = uv_accept(handle, (uv_stream_t*)&client_wrap->handle_);
-
-    // uv_accept should always work.
-    assert(r == 0);
-
-    // Successful accept. Call the onconnection callback in JavaScript land.
-    Local<Value> argv[1] = { client_obj };
-    MakeCallback(wrap->object_, "onconnection", 1, argv);
   }
 
   static Handle<Value> ReadStart(const Arguments& args) {
@@ -296,34 +298,36 @@ class TCPWrap {
 
     TCPWrap* wrap = static_cast<TCPWrap*>(handle->data);
 
-    // Remove the reference to the slab to avoid memory leaks;
-    Local<Value> slab_v = wrap->object_->GetHiddenValue(slab_sym);
-    wrap->object_->SetHiddenValue(slab_sym, v8::Null());
+    if (!wrap->object_.IsEmpty()) {
+      // Remove the reference to the slab to avoid memory leaks;
+      Local<Value> slab_v = wrap->object_->GetHiddenValue(slab_sym);
+      wrap->object_->SetHiddenValue(slab_sym, v8::Null());
 
-    if (nread < 0)  {
-      // EOF or Error
-      if (handle_that_last_alloced == (uv_tcp_t*)handle) {
-        slab_used -= buf.len;
+      if (nread < 0)  {
+        // EOF or Error
+        if (handle_that_last_alloced == (uv_tcp_t*)handle) {
+          slab_used -= buf.len;
+        }
+
+        SetErrno(uv_last_error().code);
+        MakeCallback(wrap->object_, "onread", 0, NULL);
+        return;
       }
 
-      SetErrno(uv_last_error().code);
-      MakeCallback(wrap->object_, "onread", 0, NULL);
-      return;
-    }
+      assert(nread <= buf.len);
 
-    assert(nread <= buf.len);
+      if (handle_that_last_alloced == (uv_tcp_t*)handle) {
+        slab_used -= (buf.len - nread);
+      }
 
-    if (handle_that_last_alloced == (uv_tcp_t*)handle) {
-      slab_used -= (buf.len - nread);
-    }
-
-    if (nread > 0) {
-      Local<Value> argv[3] = {
-        slab_v,
-        Integer::New(wrap->slab_offset_),
-        Integer::New(nread)
-      };
-      MakeCallback(wrap->object_, "onread", 3, argv);
+      if (nread > 0) {
+        Local<Value> argv[3] = {
+          slab_v,
+          Integer::New(wrap->slab_offset_),
+          Integer::New(nread)
+        };
+        MakeCallback(wrap->object_, "onread", 3, argv);
+      }
     }
   }
 
@@ -349,23 +353,24 @@ class TCPWrap {
     ReqWrap* req_wrap = (ReqWrap*) req->data;
     TCPWrap* wrap = (TCPWrap*) req->handle->data;
 
-    HandleScope scope;
+    if (!wrap->object_.IsEmpty()) {
+      HandleScope scope;
 
-    if (status) {
-      SetErrno(uv_last_error().code);
+      if (status) {
+        SetErrno(uv_last_error().code);
+      }
+
+      wrap->UpdateWriteQueueSize();
+
+      Local<Value> argv[4] = {
+        Integer::New(status),
+        Local<Value>::New(wrap->object_),
+        Local<Value>::New(req_wrap->object_),
+        req_wrap->object_->GetHiddenValue(buffer_sym),
+      };
+
+      MakeCallback(req_wrap->object_, "oncomplete", 4, argv);
     }
-
-    wrap->UpdateWriteQueueSize();
-
-    Local<Value> argv[4] = {
-      Integer::New(status),
-      Local<Value>::New(wrap->object_),
-      Local<Value>::New(req_wrap->object_),
-      req_wrap->object_->GetHiddenValue(buffer_sym),
-    };
-
-    MakeCallback(req_wrap->object_, "oncomplete", 4, argv);
-
     delete req_wrap;
   }
 
@@ -418,20 +423,21 @@ class TCPWrap {
     ReqWrap* req_wrap = (ReqWrap*) req->data;
     TCPWrap* wrap = (TCPWrap*) req->handle->data;
 
-    HandleScope scope;
+    if (!wrap->object_.IsEmpty()) {
+      HandleScope scope;
 
-    if (status) {
-      SetErrno(uv_last_error().code);
+      if (status) {
+        SetErrno(uv_last_error().code);
+      }
+
+      Local<Value> argv[3] = {
+        Integer::New(status),
+        Local<Value>::New(wrap->object_),
+        Local<Value>::New(req_wrap->object_)
+      };
+
+      MakeCallback(req_wrap->object_, "oncomplete", 3, argv);
     }
-
-    Local<Value> argv[3] = {
-      Integer::New(status),
-      Local<Value>::New(wrap->object_),
-      Local<Value>::New(req_wrap->object_)
-    };
-
-    MakeCallback(req_wrap->object_, "oncomplete", 3, argv);
-
     delete req_wrap;
   }
 
@@ -466,20 +472,21 @@ class TCPWrap {
     ReqWrap* req_wrap = (ReqWrap*) req->data;
     TCPWrap* wrap = (TCPWrap*) req->handle->data;
 
-    HandleScope scope;
+    if (!wrap->object_.IsEmpty()) {
+      HandleScope scope;
 
-    if (status) {
-      SetErrno(uv_last_error().code);
+      if (status) {
+        SetErrno(uv_last_error().code);
+      }
+
+      Local<Value> argv[3] = {
+        Integer::New(status),
+        Local<Value>::New(wrap->object_),
+        Local<Value>::New(req_wrap->object_)
+      };
+
+      MakeCallback(req_wrap->object_, "oncomplete", 3, argv);
     }
-
-    Local<Value> argv[3] = {
-      Integer::New(status),
-      Local<Value>::New(wrap->object_),
-      Local<Value>::New(req_wrap->object_)
-    };
-
-    MakeCallback(req_wrap->object_, "oncomplete", 3, argv);
-
     delete req_wrap;
   }
 
