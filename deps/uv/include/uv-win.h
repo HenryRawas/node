@@ -101,10 +101,8 @@ typedef struct uv_buf_t {
   HANDLE handle;
 
 #define UV_PIPE_PRIVATE_FIELDS            \
-  union {                                 \
-    struct { uv_pipe_server_fields };     \
-    struct { uv_pipe_connection_fields }; \
-  };
+    uv_pipe_server_fields     \
+    uv_pipe_connection_fields \
 
 #define UV_TIMER_PRIVATE_FIELDS           \
   RB_ENTRY(uv_timer_s) tree_entry;        \
