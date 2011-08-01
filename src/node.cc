@@ -56,13 +56,12 @@ extern "C" {
 # include <grp.h> /* getgrnam() */
 #endif
 
-#include <platform.h>
+#include "platform.h"
 #include <node_buffer.h>
 #ifdef __POSIX__
 # include <node_io_watcher.h>
 #endif
 #include <node_net.h>
-#include <node_events.h>
 #include <node_cares.h>
 #include <node_file.h>
 #include <node_http_parser.h>
@@ -140,6 +139,20 @@ static bool use_uv = false;
 static bool use_uv = true;
 #endif
 
+// disabled by default for now
+static bool use_http2 = false;
+
+#ifdef OPENSSL_NPN_NEGOTIATED
+static bool use_npn = true;
+#else
+static bool use_npn = false;
+#endif
+
+#ifdef SSL_CTRL_SET_TLSEXT_SERVERNAME_CB
+static bool use_sni = true;
+#else
+static bool use_sni = false;
+#endif
 
 // Buffer for getpwnam_r(), getgrpam_r() and other misc callers; keep this
 // scoped at file-level rather than method-level to avoid excess stack usage.
@@ -158,8 +171,8 @@ static uv_timer_t gc_timer;
 bool need_gc;
 
 
-#define FAST_TICK 0.7
-#define GC_WAIT_TIME 5.
+#define FAST_TICK 700.
+#define GC_WAIT_TIME 5000.
 #define RPM_SAMPLES 100
 #define TICK_TIME(n) tick_times[(tick_time_head - (n)) % RPM_SAMPLES]
 static int64_t tick_times[RPM_SAMPLES];
@@ -169,7 +182,7 @@ static void CheckStatus(uv_timer_t* watcher, int status);
 
 static void StartGCTimer () {
   if (!uv_is_active((uv_handle_t*) &gc_timer)) {
-    uv_timer_start(&node::gc_timer, node::CheckStatus, 5., 5.);
+    uv_timer_start(&node::gc_timer, node::CheckStatus, 5000., 5000.);
   }
 }
 
@@ -181,8 +194,6 @@ static void StopGCTimer () {
 
 static void Idle(uv_idle_t* watcher, int status) {
   assert((uv_idle_t*) watcher == &gc_idle);
-
-  //fprintf(stderr, "idle\n");
 
   if (V8::IdleNotification()) {
     uv_idle_stop(&gc_idle);
@@ -1305,7 +1316,7 @@ void DisplayExceptionLine (TryCatch &try_catch) {
     //
     // When reporting errors on the first line of a script, this wrapper
     // function is leaked to the user. This HACK is to remove it. The length
-    // of the wrapper is 70. That wrapper is defined in src/node.js
+    // of the wrapper is 62. That wrapper is defined in src/node.js
     //
     // If that wrapper is ever changed, then this number also has to be
     // updated. Or - someone could clean this up so that the two peices
@@ -1313,7 +1324,7 @@ void DisplayExceptionLine (TryCatch &try_catch) {
     //
     // Even better would be to get support into V8 for wrappers that
     // shouldn't be reported to users.
-    int offset = linenum == 1 ? 70 : 0;
+    int offset = linenum == 1 ? 62 : 0;
 
     fprintf(stderr, "%s\n", sourceline_string + offset);
     // Print wavy underline (GetUnderline is deprecated).
@@ -1861,6 +1872,7 @@ static void DebugBreakMessageHandler(const Debug::Message& message) {
 
 
 Persistent<Object> binding_cache;
+Persistent<Array> module_load_list;
 
 static Handle<Value> Binding(const Arguments& args) {
   HandleScope scope;
@@ -1877,8 +1889,16 @@ static Handle<Value> Binding(const Arguments& args) {
 
   if (binding_cache->Has(module)) {
     exports = binding_cache->Get(module)->ToObject();
+    return scope.Close(exports);
+  }
 
-  } else if ((modp = get_builtin_module(*module_v)) != NULL) {
+  // Append a string to process.moduleLoadList
+  char buf[1024];
+  snprintf(buf, 1024, "Binding %s", *module_v);
+  uint32_t l = module_load_list->Length();
+  module_load_list->Set(l, String::New(buf));
+
+  if ((modp = get_builtin_module(*module_v)) != NULL) {
     exports = Object::New();
     modp->register_func(exports);
     binding_cache->Set(module, exports);
@@ -2016,13 +2036,28 @@ static Handle<Array> EnvEnumerator(const AccessorInfo& info) {
 }
 
 
+static Handle<Object> GetFeatures() {
+  HandleScope scope;
+
+  Local<Object> obj = Object::New();
+  obj->Set(String::NewSymbol("uv"), Boolean::New(use_uv));
+  obj->Set(String::NewSymbol("http2"), Boolean::New(use_http2));
+  obj->Set(String::NewSymbol("ipv6"), True()); // TODO ping libuv
+  obj->Set(String::NewSymbol("tls_npn"), Boolean::New(use_npn));
+  obj->Set(String::NewSymbol("tls_sni"), Boolean::New(use_sni));
+  obj->Set(String::NewSymbol("tls"),
+      Boolean::New(get_builtin_module("crypto") != NULL));
+
+  return scope.Close(obj);
+}
+
+
 Handle<Object> SetupProcessObject(int argc, char *argv[]) {
   HandleScope scope;
 
   int i, j;
 
   Local<FunctionTemplate> process_template = FunctionTemplate::New();
-  node::EventEmitter::Initialize(process_template);
 
   process = Persistent<Object>::New(process_template->GetFunction()->NewInstance());
 
@@ -2036,6 +2071,10 @@ Handle<Object> SetupProcessObject(int argc, char *argv[]) {
 
   // process.installPrefix
   process->Set(String::NewSymbol("installPrefix"), String::New(NODE_PREFIX));
+
+  // process.moduleLoadList
+  module_load_list = Persistent<Array>::New(Array::New());
+  process->Set(String::NewSymbol("moduleLoadList"), module_load_list);
 
   Local<Object> versions = Object::New();
   char buf[20];
@@ -2106,7 +2145,7 @@ Handle<Object> SetupProcessObject(int argc, char *argv[]) {
   process->Set(String::NewSymbol("ENV"), ENV);
 
   process->Set(String::NewSymbol("pid"), Integer::New(getpid()));
-  process->Set(String::NewSymbol("useUV"), use_uv ? True() : False());
+  process->Set(String::NewSymbol("features"), GetFeatures());
 
   // -e, --eval
   if (eval_string) {
@@ -2146,10 +2185,6 @@ Handle<Object> SetupProcessObject(int argc, char *argv[]) {
   NODE_SET_METHOD(process, "memoryUsage", MemoryUsage);
 
   NODE_SET_METHOD(process, "binding", Binding);
-
-  // Assign the EventEmitter. It was created in main().
-  process->Set(String::NewSymbol("EventEmitter"),
-               EventEmitter::constructor_template->GetFunction());
 
   return process;
 }
@@ -2241,20 +2276,21 @@ static void ParseDebugOpt(const char* arg) {
 }
 
 static void PrintHelp() {
-  printf("Usage: node [options] script.js [arguments] \n"
-         "       node debug script.js [arguments] \n"
+  printf("Usage: node [options] [ -e script | script.js ] [arguments] \n"
+         "       node debug [ -e script | script.js ] [arguments] \n"
          "\n"
          "Options:\n"
          "  -v, --version        print node's version\n"
+         "  -e, --eval script    evaluate script\n"
          "  --v8-options         print v8 command line options\n"
          "  --vars               print various compiled-in variables\n"
          "  --max-stack-size=val set max v8 stack size (bytes)\n"
          "  --use-uv             use the libuv backend\n"
+         "  --use-http2          use the new and improved http library\n"
          "\n"
          "Enviromental variables:\n"
          "NODE_PATH              ':'-separated list of directories\n"
-         "                       prefixed to the module search path,\n"
-         "                       require.paths.\n"
+         "                       prefixed to the module search path.\n"
          "NODE_MODULE_CONTEXTS   Set to 1 to load modules in their own\n"
          "                       global contexts.\n"
          "NODE_DISABLE_COLORS    Set to 1 to disable colors in the REPL\n"
@@ -2274,6 +2310,9 @@ static void ParseArgs(int argc, char **argv) {
       argv[i] = const_cast<char*>("");
     } else if (!strcmp(arg, "--use-uv")) {
       use_uv = true;
+      argv[i] = const_cast<char*>("");
+    } else if (!strcmp(arg, "--use-http2")) {
+      use_http2 = true;
       argv[i] = const_cast<char*>("");
     } else if (strcmp(arg, "--version") == 0 || strcmp(arg, "-v") == 0) {
       printf("%s\n", NODE_VERSION);
@@ -2331,19 +2370,20 @@ static void EnableDebug(bool wait_connect) {
 static volatile bool hit_signal;
 
 
-static void EnableDebugSignalHandler(int signal) {
-  // This is signal safe.
-  hit_signal = true;
-  v8::Debug::DebugBreak();
-}
-
-
 static void DebugSignalCB(const Debug::EventDetails& details) {
   if (hit_signal && details.GetEvent() == v8::Break) {
     hit_signal = false;
     fprintf(stderr, "Hit SIGUSR1 - starting debugger agent.\n");
     EnableDebug(false);
   }
+}
+
+
+static void EnableDebugSignalHandler(int signal) {
+  // This is signal safe.
+  hit_signal = true;
+  v8::Debug::SetDebugEventListener2(DebugSignalCB);
+  v8::Debug::DebugBreak();
 }
 
 
@@ -2468,7 +2508,6 @@ char** Init(int argc, char *argv[]) {
   } else {
 #ifdef __POSIX__
     RegisterSignalHandler(SIGUSR1, EnableDebugSignalHandler);
-    Debug::SetDebugEventListener2(DebugSignalCB);
 #endif // __POSIX__
   }
 

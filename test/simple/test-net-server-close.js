@@ -19,26 +19,21 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-#ifndef SRC_EVENTS_H_
-#define SRC_EVENTS_H_
+var common = require('../common');
+var assert = require('assert');
+var net = require('net');
 
-#include <node_object_wrap.h>
-#include <v8.h>
+var server = net.createServer(function(socket) {
+  server.close();
+  process.nextTick(function() {
+    socket.destroy();
+  });
+});
 
-namespace node {
+server.listen(common.PORT, function() {
+  net.createConnection(common.PORT);
+});
 
-class EventEmitter : public ObjectWrap {
- public:
-  static void Initialize(v8::Local<v8::FunctionTemplate> ctemplate);
-  static v8::Persistent<v8::FunctionTemplate> constructor_template;
-
-  bool Emit(v8::Handle<v8::String> event,
-            int argc,
-            v8::Handle<v8::Value> argv[]);
-
- protected:
-  EventEmitter() : ObjectWrap () { }
-};
-
-}  // namespace node
-#endif  // SRC_EVENTS_H_
+server.on('close', function() {
+  assert.equal(server.connections, 0);
+});

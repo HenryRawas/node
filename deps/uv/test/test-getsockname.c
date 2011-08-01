@@ -67,7 +67,7 @@ static void after_read(uv_stream_t* handle, ssize_t nread, uv_buf_t buf) {
 }
 
 
-static void on_connection(uv_handle_t* server, int status) {
+static void on_connection(uv_stream_t* server, int status) {
   struct sockaddr sockname;
   int namelen = sizeof(sockname);
   uv_handle_t* handle;
@@ -126,6 +126,7 @@ static int tcp_listener(int port) {
   struct sockaddr_in addr = uv_ip4_addr("0.0.0.0", port);
   struct sockaddr sockname;
   int namelen = sizeof(sockname);
+  char ip[20];
   int r;
 
   r = uv_tcp_init(&tcpServer);
@@ -140,7 +141,7 @@ static int tcp_listener(int port) {
     return 1;
   }
 
-  r = uv_tcp_listen(&tcpServer, 128, on_connection);
+  r = uv_listen((uv_stream_t*)&tcpServer, 128, on_connection);
   if (r) {
     fprintf(stderr, "Listen error\n");
     return 1;
@@ -151,6 +152,14 @@ static int tcp_listener(int port) {
     fprintf(stderr, "uv_getsockname error (listening) %d\n", uv_last_error().code);
   }
   ASSERT(r == 0);
+
+  r = uv_ip4_name((struct sockaddr_in*)&sockname, ip, 20);
+  ASSERT(r == 0);
+  ASSERT(ip[0] == '0');
+  ASSERT(ip[1] == '.');
+  ASSERT(ip[2] == '0');
+  printf("sockname = %s\n", ip);
+
   getsocknamecount++;
 
   return 0;

@@ -187,30 +187,18 @@ assert.equal(require(loadOrder + 'file8').file8, 'file8/index.reg', msg);
 assert.equal(require(loadOrder + 'file9').file9, 'file9/index.reg2', msg);
 
 
-// test the async module definition pattern modules
-var amdFolder = '../fixtures/amd-modules';
-var amdreg = require(amdFolder + '/regular.js');
-assert.deepEqual(amdreg.ok, {ok: true}, 'regular amd module failed');
-
-// make sure they all get the same 'ok' object.
-var amdModuleExports = require(amdFolder + '/module-exports.js');
-assert.equal(amdModuleExports.ok, amdreg.ok, 'amd module.exports failed');
-
-var amdReturn = require(amdFolder + '/return.js');
-assert.equal(amdReturn.ok, amdreg.ok, 'amd return failed');
-
-var amdObj = require(amdFolder + '/object.js');
-assert.equal(amdObj.ok, amdreg.ok, 'amd object literal failed');
-
-var amdExtraArgs = require(amdFolder + '/extra-args.js');
-assert.equal(amdExtraArgs.ok, amdreg.ok, 'amd extra args failed');
-
-
 // make sure that module.require() is the same as
 // doing require() inside of that module.
 var parent = require('../fixtures/module-require/parent/');
 var child = require('../fixtures/module-require/child/');
 assert.equal(child.loaded, parent.loaded);
+
+
+// #1357 Loading JSON files with require()
+var json = require('../fixtures/packages/main/package.json');
+assert.deepEqual(json, { name: 'package-name',
+                         version: '1.2.3',
+                         main: 'package-main-module' });
 
 
 process.addListener('exit', function() {
